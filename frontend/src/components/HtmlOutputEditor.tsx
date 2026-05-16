@@ -1,0 +1,474 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+type FormatState = {
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strike: boolean
+  ordered: boolean
+  unordered: boolean
+}
+
+type CvComponentKind = 'awards' | 'projects' | 'activities' | 'volunteer' | 'publications' | 'hobbies'
+
+const FONT_FAMILIES = ['Poppins', 'Raleway', 'Lato', 'Inter', 'Open Sans', 'Barlow', 'Arial', 'Georgia', 'Times New Roman']
+const DEFAULT_FORMAT: FormatState = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strike: false,
+  ordered: false,
+  unordered: false,
+}
+
+const CV_COMPONENTS_VI = [
+  { kind: 'awards' as const, label: 'Giải thưởng', icon: '★' },
+  { kind: 'projects' as const, label: 'Dự án', icon: '▣' },
+  { kind: 'activities' as const, label: 'Hoạt động', icon: '◉' },
+  { kind: 'volunteer' as const, label: 'Tình nguyện', icon: '♥' },
+  { kind: 'publications' as const, label: 'Nghiên cứu', icon: '◈' },
+  { kind: 'hobbies' as const, label: 'Sở thích', icon: '♦' },
+]
+
+const CV_COMPONENTS_EN = [
+  { kind: 'awards' as const, label: 'Awards', icon: '★' },
+  { kind: 'projects' as const, label: 'Projects', icon: '▣' },
+  { kind: 'activities' as const, label: 'Activities', icon: '◉' },
+  { kind: 'volunteer' as const, label: 'Volunteer', icon: '♥' },
+  { kind: 'publications' as const, label: 'Publications', icon: '◈' },
+  { kind: 'hobbies' as const, label: 'Hobbies', icon: '♦' },
+]
+
+const SECTION_COPY_VI: Record<CvComponentKind, { title: string; body: string }> = {
+  awards: {
+    title: 'Giải Thưởng',
+    body: '<div class="exp-entry"><div class="exp-company">Tên giải thưởng</div><div class="exp-time">YYYY</div><div class="exp-role">Đơn vị trao giải</div><ul class="exp-bullets"><li>Mô tả ngắn về thành tích hoặc phạm vi giải thưởng.</li></ul></div>',
+  },
+  projects: {
+    title: 'Dự Án',
+    body: '<div class="exp-entry"><div class="exp-company">Tên dự án</div><div class="exp-time">MM/YYYY - MM/YYYY</div><div class="exp-role">Link: https://example.com</div><ul class="exp-bullets"><li>Mô tả mục tiêu, vai trò, công nghệ sử dụng và kết quả dự án.</li></ul></div>',
+  },
+  activities: {
+    title: 'Hoạt Động',
+    body: '<div class="exp-entry"><div class="exp-company">Tên hoạt động</div><div class="exp-time">MM/YYYY - MM/YYYY</div><div class="exp-role">Vai trò / Tổ chức</div><ul class="exp-bullets"><li>Mô tả đóng góp chính hoặc kết quả đạt được.</li></ul></div>',
+  },
+  volunteer: {
+    title: 'Tình Nguyện',
+    body: '<div class="exp-entry"><div class="exp-company">Tên tổ chức</div><div class="exp-time">MM/YYYY - MM/YYYY</div><div class="exp-role">Vai trò tình nguyện viên</div><ul class="exp-bullets"><li>Mô tả hoạt động và đóng góp của bạn.</li></ul></div>',
+  },
+  publications: {
+    title: 'Nghiên Cứu',
+    body: '<div class="exp-entry"><div class="exp-company">Tên nghiên cứu / ấn phẩm</div><div class="exp-time">YYYY</div><div class="exp-role">Tạp chí / Hội nghị / Nơi xuất bản</div><ul class="exp-bullets"><li>Mô tả nội dung và đóng góp của nghiên cứu.</li></ul></div>',
+  },
+  hobbies: {
+    title: 'Sở Thích',
+    body: '<div class="exp-entry"><div class="exp-company">Sở thích &amp; Hoạt động cá nhân</div><ul class="exp-bullets"><li>Liệt kê sở thích và hoạt động ngoại khoá của bạn.</li></ul></div>',
+  },
+}
+
+const SECTION_COPY_EN: Record<CvComponentKind, { title: string; body: string }> = {
+  awards: {
+    title: 'Awards',
+    body: '<div class="exp-entry"><div class="exp-company">Award Name</div><div class="exp-time">YYYY</div><div class="exp-role">Awarding Organization</div><ul class="exp-bullets"><li>Brief description of the achievement or scope of the award.</li></ul></div>',
+  },
+  projects: {
+    title: 'Projects',
+    body: '<div class="exp-entry"><div class="exp-company">Project Name</div><div class="exp-time">MM/YYYY - MM/YYYY</div><div class="exp-role">Link: https://example.com</div><ul class="exp-bullets"><li>Describe the goal, your role, technologies used, and outcomes.</li></ul></div>',
+  },
+  activities: {
+    title: 'Activities',
+    body: '<div class="exp-entry"><div class="exp-company">Activity Name</div><div class="exp-time">MM/YYYY - MM/YYYY</div><div class="exp-role">Role / Organization</div><ul class="exp-bullets"><li>Describe your key contributions or results achieved.</li></ul></div>',
+  },
+  volunteer: {
+    title: 'Volunteer',
+    body: '<div class="exp-entry"><div class="exp-company">Organization Name</div><div class="exp-time">MM/YYYY - MM/YYYY</div><div class="exp-role">Volunteer Role</div><ul class="exp-bullets"><li>Describe the activity and your contributions.</li></ul></div>',
+  },
+  publications: {
+    title: 'Publications',
+    body: '<div class="exp-entry"><div class="exp-company">Research / Publication Title</div><div class="exp-time">YYYY</div><div class="exp-role">Journal / Conference / Publisher</div><ul class="exp-bullets"><li>Describe the content and your contribution to the research.</li></ul></div>',
+  },
+  hobbies: {
+    title: 'Hobbies & Interests',
+    body: '<div class="exp-entry"><div class="exp-company">Hobbies &amp; Personal Interests</div><ul class="exp-bullets"><li>List your hobbies and extracurricular activities.</li></ul></div>',
+  },
+}
+
+function sectionIcon(kind: CvComponentKind) {
+  if (kind === 'projects') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 5V4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v1h4a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7c0-1.1.9-2 2-2h4Zm2 0h2V4h-2v1Zm-6 6h14V7H5v4Zm0 2v5h14v-5h-5v1h-4v-1H5Z"/></svg>'
+  }
+  if (kind === 'activities') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm8.5 0a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7ZM2 21v-1c0-4 2.8-7 6-7s6 3 6 7v1H2Zm12.5 0c.3-.8.5-1.7.5-2.6 0-2-.7-3.8-1.8-5.1 1-.8 2.2-1.3 3.3-1.3 3 0 5.5 2.8 5.5 6.5V21h-7.5Z"/></svg>'
+  }
+  if (kind === 'volunteer') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>'
+  }
+  if (kind === 'publications') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>'
+  }
+  if (kind === 'hobbies') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm4.24 16L12 15.45 7.77 18l1.12-4.81-3.73-3.23 4.92-.42L12 5l1.92 4.53 4.92.42-3.73 3.23L16.23 18z"/></svg>'
+  }
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 14 5.5l4-.6-.6 4 3.6 2.1-3.6 2.1.6 4-4-.6L12 20l-2-3.5-4 .6.6-4L3 11l3.6-2.1-.6-4 4 .6L12 2Zm-2.2 8.8-1.4 1.4 2.6 2.6 5-5-1.4-1.4-3.6 3.6-1.2-1.2Z"/></svg>'
+}
+
+function normalizeListNearSelection(doc: Document) {
+  const selection = doc.getSelection()
+  const node = selection?.anchorNode
+  const element = node instanceof Element ? node : node?.parentElement
+  const list = element?.closest('ul, ol') as HTMLElement | null
+  if (!list) return
+  list.style.listStylePosition = 'outside'
+  list.style.paddingLeft = list.tagName === 'UL' ? '1.25em' : '1.5em'
+  list.style.marginLeft = '0'
+  if (list.tagName === 'UL') list.style.listStyleType = 'disc'
+}
+
+function buildSectionHtml(doc: Document, kind: CvComponentKind, lang: 'en' | 'vi') {
+  const copy = (lang === 'en' ? SECTION_COPY_EN : SECTION_COPY_VI)[kind]
+  const icon = sectionIcon(kind)
+  const mainIcon = icon.replace('<svg ', '<svg class="main-icon" ')
+
+  if (doc.querySelector('.main-section .timeline-body')) {
+    return `<section class="main-section">
+        <h2 class="main-heading">${mainIcon}${copy.title}</h2>
+        <div class="timeline-body">
+          <div class="timeline-rail"><span class="timeline-dot"></span></div>
+          <div class="experience">${copy.body}</div>
+        </div>
+      </section>`
+  }
+
+  if (doc.querySelector('.timeline-section')) {
+    return `<section class="timeline-section compact">
+        <div class="timeline-rail">
+          <span class="circle-icon">${icon}</span>
+          <span class="timeline-dot"></span>
+        </div>
+        <div>
+          <h2 class="section-heading">${copy.title}</h2>
+          <div class="experience">${copy.body}</div>
+        </div>
+      </section>`
+  }
+
+  if (doc.querySelector('.education-grid')) {
+    return `<section>
+      <h2>${copy.title}</h2>
+      <div class="experience">${copy.body}</div>
+    </section>`
+  }
+
+  if (doc.querySelector('.section-rule')) {
+    return `<section>
+      <h2>${copy.title}</h2>
+      <div class="experience">${copy.body}</div>
+    </section>
+    <hr class="section-rule" />`
+  }
+
+  return `<section>
+    <h2 class="section-heading">${copy.title}</h2>
+    <div class="experience">${copy.body}</div>
+  </section>`
+}
+
+function ToolButton({
+  active,
+  title,
+  children,
+  onMouseDown,
+}: {
+  active?: boolean
+  title: string
+  children: React.ReactNode
+  onMouseDown: (event: React.MouseEvent<HTMLButtonElement>) => void
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onMouseDown={onMouseDown}
+      className={`grid h-9 min-w-9 place-items-center rounded-lg px-2 text-lg font-semibold transition-colors ${
+        active ? 'bg-violet-100 text-violet-700' : 'text-slate-800 hover:bg-slate-100'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function Divider() {
+  return <div className="mx-1 h-7 w-px bg-slate-300" />
+}
+
+export default function HtmlOutputEditor({ outputPath, lang = 'vi' }: { outputPath?: string; lang?: 'en' | 'vi' }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const savedRangeRef = useRef<Range | null>(null)
+  const sectionUndoRef = useRef<Element[]>([])
+  const [html, setHtml] = useState('')
+  const [error, setError] = useState('')
+  const [fontFamily, setFontFamily] = useState('DM Sans')
+  const [fontSize, setFontSize] = useState(28)
+  const [formatState, setFormatState] = useState<FormatState>(DEFAULT_FORMAT)
+
+  const url = useMemo(() => {
+    if (!outputPath) return ''
+    return `/api/cv/download?path=${encodeURIComponent(outputPath)}`
+  }, [outputPath])
+
+  const getEditorDocument = useCallback(() => iframeRef.current?.contentDocument ?? null, [])
+
+  const saveSelection = useCallback(() => {
+    const doc = getEditorDocument()
+    const selection = doc?.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    savedRangeRef.current = selection.getRangeAt(0)
+  }, [getEditorDocument])
+
+  const restoreSelection = useCallback(() => {
+    const doc = getEditorDocument()
+    const range = savedRangeRef.current
+    if (!doc || !range) return
+    const selection = doc.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }, [getEditorDocument])
+
+  const updateFormatState = useCallback(() => {
+    const doc = getEditorDocument()
+    if (!doc) return
+    try {
+      setFormatState({
+        bold: doc.queryCommandState('bold'),
+        italic: doc.queryCommandState('italic'),
+        underline: doc.queryCommandState('underline'),
+        strike: doc.queryCommandState('strikeThrough'),
+        ordered: doc.queryCommandState('insertOrderedList'),
+        unordered: doc.queryCommandState('insertUnorderedList'),
+      })
+    } catch {
+      setFormatState(DEFAULT_FORMAT)
+    }
+    saveSelection()
+  }, [getEditorDocument, saveSelection])
+
+  const exec = useCallback((command: string, value?: string) => {
+    const doc = getEditorDocument()
+    const frame = iframeRef.current
+    if (!doc || !frame) return
+    frame.contentWindow?.focus()
+    restoreSelection()
+    doc.execCommand(command, false, value)
+    if (command === 'insertUnorderedList' || command === 'insertOrderedList') {
+      normalizeListNearSelection(doc)
+    }
+    updateFormatState()
+  }, [getEditorDocument, restoreSelection, updateFormatState])
+
+  const insertComponent = useCallback((kind: CvComponentKind) => {
+    const doc = getEditorDocument()
+    const frame = iframeRef.current
+    if (!doc || !frame) return
+
+    const sectionHtml = buildSectionHtml(doc, kind, lang)
+    // Prefer .main (right column in 2-col templates), fall back to .page
+    const mainContainer = doc.querySelector('.main') ?? doc.querySelector('.page')
+    if (!mainContainer) return
+
+    // insertAdjacentHTML is reliable — always appends as last child of mainContainer
+    // regardless of current cursor position (execCommand can nest inside last section)
+    mainContainer.insertAdjacentHTML('beforeend', sectionHtml)
+    const inserted = mainContainer.lastElementChild as HTMLElement | null
+    if (!inserted) return
+
+    // Track for Ctrl+Z undo (see keydown handler in useEffect)
+    sectionUndoRef.current.push(inserted)
+
+    inserted.scrollIntoView({ block: 'center' })
+    frame.contentWindow?.focus()
+
+    const range = doc.createRange()
+    range.selectNodeContents(inserted)
+    range.collapse(false)
+    const sel = doc.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    savedRangeRef.current = range
+
+    updateFormatState()
+  }, [getEditorDocument, updateFormatState, lang])
+
+  useEffect(() => {
+    if (!url) return
+    fetch(url)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Không tải được HTML output')
+        setHtml(await res.text())
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Không tải được HTML output'))
+  }, [url])
+
+  useEffect(() => {
+    const doc = getEditorDocument()
+    if (!doc || !html) return
+    doc.open()
+    doc.write(html.replace('<main class="page">', '<main class="page" contenteditable="true" spellcheck="false">'))
+    doc.close()
+
+    // Reset section undo stack whenever HTML is reloaded
+    sectionUndoRef.current = []
+
+    const syncSelection = () => updateFormatState()
+    doc.addEventListener('selectionchange', syncSelection)
+    doc.addEventListener('keyup', syncSelection)
+    doc.addEventListener('mouseup', syncSelection)
+    doc.addEventListener('input', syncSelection)
+
+    // Ctrl+Z: undo the last inserted section (only when undo stack has entries
+    // AND the cursor is inside one of our inserted sections)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        const stack = sectionUndoRef.current
+        if (stack.length === 0) return
+        const last = stack[stack.length - 1]
+        // Only intercept if cursor is inside the most-recently added section
+        const sel = doc.getSelection()
+        const anchor = sel?.anchorNode
+        const inLast = anchor && last.contains(anchor)
+        if (inLast) {
+          e.preventDefault()
+          last.parentNode?.removeChild(last)
+          stack.pop()
+        }
+      }
+    }
+    doc.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      doc.removeEventListener('selectionchange', syncSelection)
+      doc.removeEventListener('keyup', syncSelection)
+      doc.removeEventListener('mouseup', syncSelection)
+      doc.removeEventListener('input', syncSelection)
+      doc.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [getEditorDocument, html, updateFormatState])
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-3 py-2">
+        <select
+          value={fontFamily}
+          onChange={(event) => {
+            setFontFamily(event.target.value)
+            exec('fontName', event.target.value)
+          }}
+          className="h-10 min-w-40 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-violet-300"
+          title="Phông chữ"
+        >
+          {FONT_FAMILIES.map((font) => (
+            <option key={font} value={font}>{font}</option>
+          ))}
+        </select>
+
+        <div className="flex h-10 items-center rounded-lg border border-slate-300 bg-white">
+          <button type="button" className="h-full px-3 text-lg font-semibold" onClick={() => {
+            const next = Math.max(8, fontSize - 1)
+            setFontSize(next)
+            exec('fontSize', String(Math.max(1, Math.min(7, Math.round(next / 6)))))
+          }}>-</button>
+          <input
+            value={fontSize}
+            onChange={(event) => {
+              const next = Number(event.target.value) || 12
+              setFontSize(next)
+              exec('fontSize', String(Math.max(1, Math.min(7, Math.round(next / 6)))))
+            }}
+            className="h-full w-12 text-center text-lg font-bold outline-none"
+            title="Cỡ chữ"
+          />
+          <button type="button" className="h-full px-3 text-lg font-semibold" onClick={() => {
+            const next = Math.min(72, fontSize + 1)
+            setFontSize(next)
+            exec('fontSize', String(Math.max(1, Math.min(7, Math.round(next / 6)))))
+          }}>+</button>
+        </div>
+
+        <ToolButton title="Màu chữ" onMouseDown={(event) => event.preventDefault()}>
+          <label className="relative grid cursor-pointer place-items-center">
+            <span>A</span>
+            <input
+              type="color"
+              className="absolute inset-0 cursor-pointer opacity-0"
+              onChange={(event) => exec('foreColor', event.target.value)}
+            />
+            <span className="mt-1 h-1 w-6 rounded bg-linear-to-r from-red-500 via-yellow-400 to-blue-500" />
+          </label>
+        </ToolButton>
+
+        <ToolButton title="In đậm" active={formatState.bold} onMouseDown={(event) => { event.preventDefault(); exec('bold') }}>
+          B
+        </ToolButton>
+        <ToolButton title="In nghiêng" active={formatState.italic} onMouseDown={(event) => { event.preventDefault(); exec('italic') }}>
+          <em>I</em>
+        </ToolButton>
+        <ToolButton title="Gạch chân" active={formatState.underline} onMouseDown={(event) => { event.preventDefault(); exec('underline') }}>
+          <span className="underline">U</span>
+        </ToolButton>
+        <ToolButton title="Gạch ngang" active={formatState.strike} onMouseDown={(event) => { event.preventDefault(); exec('strikeThrough') }}>
+          <span className="line-through">S</span>
+        </ToolButton>
+
+        <Divider />
+
+        <ToolButton title="Cỡ chữ hoa/thường" onMouseDown={(event) => { event.preventDefault(); exec('formatBlock', 'h2') }}>
+          aA
+        </ToolButton>
+        <ToolButton title="Căn trái" onMouseDown={(event) => { event.preventDefault(); exec('justifyLeft') }}>
+          <span className="text-xl">≡</span>
+        </ToolButton>
+        <ToolButton title="Danh sách" active={formatState.unordered} onMouseDown={(event) => { event.preventDefault(); exec('insertUnorderedList') }}>
+          <span className="text-xl">•≡</span>
+        </ToolButton>
+        <ToolButton title="Danh sách số" active={formatState.ordered} onMouseDown={(event) => { event.preventDefault(); exec('insertOrderedList') }}>
+          <span className="text-base">1.</span>
+        </ToolButton>
+      </div>
+
+      <div className="grid min-h-215 grid-cols-[220px_1fr] bg-slate-100">
+        <aside className="border-r border-slate-200 bg-white p-3">
+          <h3 className="mb-3 text-sm font-bold text-slate-900">{lang === 'en' ? 'Sections' : 'Thành phần'}</h3>
+          <div className="grid gap-2">
+            {(lang === 'en' ? CV_COMPONENTS_EN : CV_COMPONENTS_VI).map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  insertComponent(item.kind)
+                }}
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-xs text-slate-700">
+                  {item.icon}
+                </span>
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div className="p-4">
+          {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+          <iframe
+            ref={iframeRef}
+            title="HTML CV editor"
+            className="h-210 w-full rounded-lg border border-slate-200 bg-slate-100"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
